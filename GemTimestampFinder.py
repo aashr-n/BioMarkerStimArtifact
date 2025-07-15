@@ -18,9 +18,9 @@ DURATION_SECONDS = 30
 
 def process_stim_data(filepath):
     """
-    Identifies stim-survey pairs, flags them based on a pre-stim quiet period,
-    calculates time windows (before, during, after) using the survey's record_id
-    for labeling, and saves them to separate CSV files.
+    Identifies stim-survey pairs, calculates time windows (before, during, after),
+    and saves them to three CSV files. A fourth CSV is created to indicate
+    whether each pair met the pre-stim quiet period requirement.
     """
     if not filepath:
         print("No file selected. Exiting.")
@@ -31,7 +31,6 @@ def process_stim_data(filepath):
 
     # Read the data and ensure required columns are present and correctly typed
     try:
-        # --- CHANGE: Added 'record_id' to the list of expected columns ---
         required_cols = ['record_id', 'sort_timestamp', 'start_adj', 'type']
         df = pd.read_csv(
             filepath,
@@ -63,7 +62,6 @@ def process_stim_data(filepath):
     print(f"Found {len(stim_indices)} potential stim-survey pairs.")
 
     # 2. Create a DataFrame of the potential pairs
-    # --- CHANGE: Added 'record_id' from the survey row ---
     pairs_df = pd.DataFrame({
         'stim_start': df.loc[stim_indices, 'start_adj'].values,
         'stim_end': df.loc[stim_indices, 'sort_timestamp'].values,
@@ -85,8 +83,8 @@ def process_stim_data(filepath):
 
     print(f"Found {len(valid_pairs_df)} pairs within the survey time threshold.")
 
-    # --- NEW LOGIC: Instead of filtering, create a boolean flag column ---
-    quiet_period_seconds = 2*(DURATION_SECONDS + BUFFER_SECONDS)
+    # --- Determine if the quiet period was met for each valid pair ---
+    quiet_period_seconds = 2 * (DURATION_SECONDS + BUFFER_SECONDS)
     # The first stim in the file will have NaN. fillna() ensures it's correctly marked as True.
     valid_pairs_df['quiet_period_met'] = (
         valid_pairs_df['time_since_prev_stim'].fillna(quiet_period_seconds + 1) > quiet_period_seconds
@@ -94,7 +92,6 @@ def process_stim_data(filepath):
     # --------------------------------------------------------------------
 
     # 4. Calculate the 'before', 'during', and 'after' time windows
-    # --- CHANGE: All calculations now use 'valid_pairs_df' since we don't filter ---
     buffer_delta = pd.to_timedelta(BUFFER_SECONDS, unit='s')
     duration_delta = pd.to_timedelta(DURATION_SECONDS, unit='s')
 
@@ -118,24 +115,28 @@ def process_stim_data(filepath):
     after_df['end_time'] = valid_pairs_df['stim_end'] + buffer_delta + duration_delta
     after_df['adjust'] = 'auto'
 
-    # 5. Final formatting for all three DataFrames
-    # --- NEW LOGIC: Create labels from record_id and add the flag column ---
+    # 5. Final formatting for the 'before', 'during', and 'after' DataFrames
     all_dfs = {
         'before': before_df,
         'during': during_df,
         'after': after_df
     }
-    
+
     for name, temp_df in all_dfs.items():
         # Create the specific label format (e.g., "some_id_before")
         temp_df['label'] = valid_pairs_df['record_id'].astype(str) + f"_{name}"
-        
-        # Add the quiet period flag column
-        temp_df['quiet_period_met'] = valid_pairs_df['quiet_period_met']
-        
-        # Reorder columns to put 'label' first, followed by the flag
-        cols = ['label', 'quiet_period_met', 'start_time', 'end_time', 'adjust']
+
+        # Reorder columns to put 'label' first.
+        # The 'quiet_period_met' column is NOT included here.
+        cols = ['label', 'start_time', 'end_time', 'adjust']
         all_dfs[name] = temp_df[cols]
+
+    # --- NEW: Create a 4th DataFrame for the quiet time status ---
+    quiet_status_df = pd.DataFrame({
+        'label': valid_pairs_df['record_id'].astype(str),
+        'quiet_period_met': valid_pairs_df['quiet_period_met']
+    })
+    # ---------------------------------------------------------------
 
     # 6. Save the results to new CSV files
     output_dir = input_path.parent
@@ -145,20 +146,24 @@ def process_stim_data(filepath):
         "before": output_dir / f"{base_name}_before.csv",
         "during": output_dir / f"{base_name}_during.csv",
         "after": output_dir / f"{base_name}_after.csv",
+        "quiet_status": output_dir / f"{base_name}_quiet_status.csv" # Added 4th file path
     }
 
     datetime_format = '%Y-%m-%d %H:%M:%S.%f'
 
+    # Save the original three files
     all_dfs['before'].to_csv(output_paths["before"], index=False, date_format=datetime_format)
     all_dfs['during'].to_csv(output_paths["during"], index=False, date_format=datetime_format)
     all_dfs['after'].to_csv(output_paths["after"], index=False, date_format=datetime_format)
 
+    # Save the new quiet status file (no date format needed)
+    quiet_status_df.to_csv(output_paths["quiet_status"], index=False)
+
+
     print("\n--- Success! ---")
     print(f"Output files have been saved to: {output_dir}")
     for name, path in output_paths.items():
-        print(f"- {name.capitalize()}: {path.name}")
-
-
+        print(f"- {name.replace('_', ' ').capitalize()}: {path.name}")
 
 
 def main():
@@ -171,7 +176,8 @@ def main():
         filetypes=[("CSV files", "*.csv")]
     )
 
-    process_stim_data(filepath)
+    if filepath: # Ensure a file was actually selected before processing
+        process_stim_data(filepath)
 
 
 if __name__ == "__main__":
