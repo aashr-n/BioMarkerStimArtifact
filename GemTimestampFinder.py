@@ -124,7 +124,7 @@ def process_stim_data(filepath):
 
     for name, temp_df in all_dfs.items():
         # Create the specific label format (e.g., "some_id_before")
-        temp_df['label'] = valid_pairs_df['record_id'].astype(str) + f"_{name}"
+        temp_df['label'] = valid_pairs_df['record_id'].astype(int).astype(str) + f"_{name}"
 
         # Reorder columns to put 'label' first.
         # The 'quiet_period_met' column is NOT included here.
@@ -133,7 +133,7 @@ def process_stim_data(filepath):
 
     # --- NEW: Create a 4th DataFrame for the quiet time status ---
     quiet_status_df = pd.DataFrame({
-        'label': valid_pairs_df['record_id'].astype(str),
+        'label': valid_pairs_df['record_id'].astype(int).astype(str),
         'quiet_period_met': valid_pairs_df['quiet_period_met']
     })
     # ---------------------------------------------------------------
