@@ -4,7 +4,7 @@
 #### merge_stim_data.py
 - merges 'arm1' and 'stim_info' csv files to get one unified csv file
 
-#### timestampFinder.py
+#### timestampFinder.py ()
 #### GemTimestampFinder.py (made by Gemini, reviewed by author)
 - finds all the stimulation instances followed by a survey
 - collects all said pairings with time distance under threshold
@@ -15,7 +15,7 @@
 - visualizes the lost "before" recordings caused by back-to-back stimulation periods that are close together preceding a survey
 
 
-helper functions
+helper functions (not used as of now)
 
 calc_powers.py
 find_pre_surv_times.py

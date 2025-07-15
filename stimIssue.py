@@ -84,35 +84,29 @@ def plot_figure_1(pairs_df, all_stim_starts, plot_id):
     ax.plot(thresholds, all_counts, color='red', marker='o', linestyle='-', label='All Eligible Pairs')
     ax.plot(thresholds, isolated_counts, color='blue', marker='o', linestyle='--', label=f'Isolated Pairs (No stim within {isolation_window_seconds}s before)')
     ax.set_title(f'{plot_id}: Eligible Stim-Survey Pairs vs. Time Threshold', fontsize=16)
-    ax.set_xlabel('Time Threshold (seconds)', fontsize=12)
+    ax.set_xlabel('Survey-Stim Time Threshold (seconds)', fontsize=12)
     ax.set_ylabel('Number of Eligible Instances', fontsize=12)
     ax.legend(fontsize=10)
     ax.grid(True)
     return fig
 
 def plot_figure_2(pairs_df, stim_periods, plot_id):
-    """Generates and displays the 'Proximity to No-Stim Windows' plot."""
-    print("Generating Figure 2: Proximity to No-Stim Windows...")
+    """Generates and displays the 'Proximity to Preceding No-Stim Windows' plot."""
+    print("Generating Figure 2: Proximity to Preceding No-Stim Windows...")
     no_stim_window_seconds = DURATION_SECONDS + BUFFER_SECONDS
 
-    # --- FIX ---
-    # The previous error occurred here because duplicate columns in `stim_periods`
-    # caused `gap_starts` and `gap_ends` to be 2D DataFrames instead of 1D Series.
-    # This fix ensures they are always 1D Series before creating the new DataFrame.
-    gap_starts = stim_periods['stop_adj']
-    gap_ends = stim_periods['start_adj'].shift(-1)
+    gap_starts_raw = stim_periods['stop_adj']
+    gap_ends_raw = stim_periods['start_adj'].shift(-1)
 
-    if isinstance(gap_starts, pd.DataFrame): gap_starts = gap_starts.iloc[:, 0]
-    if isinstance(gap_ends, pd.DataFrame): gap_ends = gap_ends.iloc[:, 0]
+    if isinstance(gap_starts_raw, pd.DataFrame): gap_starts_raw = gap_starts_raw.iloc[:, 0]
+    if isinstance(gap_ends_raw, pd.DataFrame): gap_ends_raw = gap_ends_raw.iloc[:, 0]
     
     gaps = pd.DataFrame({
-        'start': gap_starts.reset_index(drop=True), 
-        'end': gap_ends.reset_index(drop=True)
+        'start': gap_starts_raw.reset_index(drop=True), 
+        'end': gap_ends_raw.reset_index(drop=True)
     }).dropna()
-    # --- END FIX ---
 
     gaps['duration'] = (gaps['end'] - gaps['start']).dt.total_seconds()
-    
     valid_gaps = gaps[gaps['duration'] >= no_stim_window_seconds].reset_index(drop=True)
 
     if valid_gaps.empty:
@@ -120,36 +114,37 @@ def plot_figure_2(pairs_df, stim_periods, plot_id):
         return None
 
     pairs_sorted = pairs_df.sort_values('stim_start')
-    merged_prev = pd.merge_asof(pairs_sorted, valid_gaps.rename(columns={'end': 'prev_gap_end'}),
-                                left_on='stim_start', right_on='prev_gap_end', direction='backward')
-    dist_to_prev = (merged_prev['stim_start'] - merged_prev['prev_gap_end']).dt.total_seconds()
-
-    merged_next = pd.merge_asof(pairs_sorted, valid_gaps.rename(columns={'start': 'next_gap_start'}),
-                                left_on='stim_start', right_on='next_gap_start', direction='forward')
-    dist_to_next = (merged_next['next_gap_start'] - merged_next['stim_start']).dt.total_seconds()
+    merged_df = pd.merge_asof(
+        pairs_sorted, 
+        valid_gaps.rename(columns={'end': 'preceding_gap_end'}),
+        left_on='stim_start', 
+        right_on='preceding_gap_end', 
+        direction='backward'
+    )
     
-    pairs_df['dist_to_prev'] = dist_to_prev
-    pairs_df['dist_to_next'] = dist_to_next
-    pairs_df['nearest_dist'] = pairs_df[['dist_to_prev', 'dist_to_next']].min(axis=1)
-    pairs_df['no_stim_precedes'] = pairs_df['dist_to_prev'] <= pairs_df['dist_to_next']
+    merged_df['dist_from_preceding_end'] = (merged_df['stim_start'] - merged_df['preceding_gap_end']).dt.total_seconds()
+    with_preceding_gap = merged_df.dropna(subset=['dist_from_preceding_end'])
+    with_preceding_gap_90s = with_preceding_gap[with_preceding_gap['delta_seconds'] <= SURVEY_TIME_THRESHOLD_SECONDS]
 
-    pairs_df_90s = pairs_df[pairs_df['delta_seconds'] <= SURVEY_TIME_THRESHOLD_SECONDS].copy()
-    max_dist = pairs_df['nearest_dist'].max()
+    max_dist = with_preceding_gap['dist_from_preceding_end'].max()
     dist_thresholds = range(0, int(max_dist + THRESHOLD_STEP_SECONDS) if pd.notna(max_dist) else 300, THRESHOLD_STEP_SECONDS)
 
-    counts_A = [(pairs_df['nearest_dist'] <= t).sum() for t in dist_thresholds]
-    counts_B = [((pairs_df['nearest_dist'] <= t) & (~pairs_df['no_stim_precedes'])).sum() for t in dist_thresholds]
-    counts_C = [(pairs_df_90s['nearest_dist'] <= t).sum() for t in dist_thresholds]
-    counts_D = [((pairs_df_90s['nearest_dist'] <= t) & (~pairs_df_90s['no_stim_precedes'])).sum() for t in dist_thresholds]
+    counts_A = [(with_preceding_gap['dist_from_preceding_end'] <= t).sum() for t in dist_thresholds]
+    counts_C = [(with_preceding_gap_90s['dist_from_preceding_end'] <= t).sum() for t in dist_thresholds]
+
+    total_A = len(with_preceding_gap)
+    total_C = len(with_preceding_gap_90s)
 
     fig, ax = plt.subplots(figsize=(14, 8))
-    ax.plot(dist_thresholds, counts_A, color='green', marker='o', label='All Pairs')
-    ax.plot(dist_thresholds, counts_B, color='orange', marker='o', linestyle='--', label='Pairs w/o Preceding No-Stim')
-    ax.plot(dist_thresholds, counts_C, color='purple', marker='s', label=f'Pairs within {SURVEY_TIME_THRESHOLD_SECONDS}s Threshold')
-    ax.plot(dist_thresholds, counts_D, color='brown', marker='s', linestyle='--', label=f'Pairs w/o Preceding No-Stim (within {SURVEY_TIME_THRESHOLD_SECONDS}s)')
+    
+    ax.plot(dist_thresholds, counts_A, color='green', marker='o', label='Cumulative Pairs with Preceding No-Stim')
+    ax.plot(dist_thresholds, counts_C, color='purple', marker='s', label=f'Cumulative Pairs with Preceding No-Stim (Survey <= {SURVEY_TIME_THRESHOLD_SECONDS}s)')
 
-    ax.set_title(f'{plot_id}: Instance Proximity to Eligible No-Stim Windows', fontsize=16)
-    ax.set_xlabel('Distance to Nearest No-Stim Window (seconds)', fontsize=12)
+    ax.axhline(y=total_A, color='green', linestyle=':', label=f'Total Available ({total_A})')
+    ax.axhline(y=total_C, color='purple', linestyle=':', label=f'Total Available (Survey <= {SURVEY_TIME_THRESHOLD_SECONDS}s) ({total_C})')
+
+    ax.set_title(f'{plot_id}: Instance Proximity to Preceding No-Stim Windows', fontsize=16)
+    ax.set_xlabel('Distance from Preceding No-Stim Window End to Stim Start (seconds)', fontsize=12)
     ax.set_ylabel('Number of Instances', fontsize=12)
     ax.legend(fontsize=10)
     ax.grid(True)
@@ -170,27 +165,23 @@ def main():
 
     plot_id = get_plot_title(Path(filepath).name)
     df = load_and_validate_data(filepath)
-    if df is None:
-        return
+    if df is None: return
 
     pairs_df = find_stim_survey_pairs(df)
     if pairs_df is None:
         messagebox.showinfo("No Pairs Found", "No consecutive stim-survey pairs were found in the data.")
         return
 
-    # --- Generate Plots ---
     all_stim_starts_raw = df.loc[df['type'] == 'stim', 'start_adj']
     if isinstance(all_stim_starts_raw, pd.DataFrame): all_stim_starts_raw = all_stim_starts_raw.iloc[:, 0]
     all_stim_starts = all_stim_starts_raw.sort_values().reset_index(drop=True)
 
     stim_periods_raw = df[df['type'] == 'stim'][['start_adj', 'stop_adj']]
-    # This is more complex, we need to handle duplicates for each column individually
     start_adj_raw = stim_periods_raw['start_adj']
     stop_adj_raw = stim_periods_raw['stop_adj']
     if isinstance(start_adj_raw, pd.DataFrame): start_adj_raw = start_adj_raw.iloc[:, 0]
     if isinstance(stop_adj_raw, pd.DataFrame): stop_adj_raw = stop_adj_raw.iloc[:, 0]
     stim_periods = pd.DataFrame({'start_adj': start_adj_raw, 'stop_adj': stop_adj_raw}).sort_values('start_adj').reset_index(drop=True)
-
 
     fig1 = plot_figure_1(pairs_df, all_stim_starts, plot_id)
     fig2 = plot_figure_2(pairs_df, stim_periods, plot_id)

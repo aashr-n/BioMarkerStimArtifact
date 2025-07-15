@@ -40,7 +40,6 @@ def identify_files(filepaths):
         
     return stim_info_path, arm1_path
 
-
 def merge_and_sort_data(stim_info_path, arm1_path):
     """
     Reads, merges, and sorts data from the two provided CSV files.
@@ -91,9 +90,6 @@ def merge_and_sort_data(stim_info_path, arm1_path):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         return None
-
-
-
 
 def analyze_and_plot_stim_survey_pairs(merged_df, stim_info_path):
     """
@@ -203,8 +199,29 @@ def analyze_and_plot_stim_survey_pairs(merged_df, stim_info_path):
         plt.legend()
         plt.tight_layout()
 
-    print("\nDisplaying plots. Close all plot windows to exit. (PLOTS WILL NOT BE SAVED)")
+    print("\nDisplaying plots. Close all plot windows to save the file and exit.")
     plt.show()
+
+def save_file(dataframe, stim_info_path):
+    """Opens a save dialog and saves the DataFrame to a CSV file."""
+    if dataframe is None:
+        print("No data to save due to an earlier error.")
+        return
+        
+    root = tk.Tk()
+    root.withdraw()
+    save_path = filedialog.asksaveasfilename(
+        defaultextension=".csv",
+        filetypes=[("CSV files", "*.csv")],
+        title="Save Merged CSV File",
+        initialfile=(f"{os.path.basename(stim_info_path)[:5]}_MERGED_timeline.csv")
+    )
+    
+    if save_path:
+        dataframe.to_csv(save_path, index=False)
+        print(f"\nSuccessfully saved merged data to: {save_path}")
+    else:
+        print("\nSave operation cancelled.")
 
 def main():
     """Main function to run the script."""
@@ -212,8 +229,6 @@ def main():
     if not filepaths:
         return
 
-
-    patientName = os.path.basename(filepaths[0])[:5]
     stim_info_path, arm1_path = identify_files(filepaths)
     if stim_info_path and arm1_path:
         merged_data = merge_and_sort_data(stim_info_path, arm1_path)
@@ -221,7 +236,7 @@ def main():
         if merged_data is not None:
             # Pass stim_info_path to get the patient ID for titles
             analyze_and_plot_stim_survey_pairs(merged_data, stim_info_path)
-        
+        save_file(merged_data, stim_info_path)
 
 if __name__ == "__main__":
     main()

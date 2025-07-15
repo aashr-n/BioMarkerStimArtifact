@@ -150,25 +150,8 @@ def analyze_and_plot_stim_survey_pairs(merged_df):
     plt.legend()
     plt.tight_layout()
 
-    print("\nDisplaying plots. Close plot windows to save the file.")
+    print("\nDisplaying plots. Close plot windows (FILES WILL NOTE BE SAVED)")
     plt.show()
-
-def save_file(dataframe):
-    """Opens a save dialog and saves the DataFrame to a CSV file."""
-    if dataframe is None:
-        print("No data to save due to an earlier error.")
-        return
-    save_path = filedialog.asksaveasfilename(
-        defaultextension=".csv",
-        filetypes=[("CSV files", "*.csv")],
-        title="Save Merged CSV File",
-        initialfile="MERGED_all_patients_timeline.csv"
-    )
-    if save_path:
-        dataframe.to_csv(save_path, index=False)
-        print(f"\n✅ Successfully saved merged data to: {save_path}")
-    else:
-        print("\nSave operation cancelled.")
 
 def main():
     """Main function to run the complete workflow."""
@@ -177,7 +160,7 @@ def main():
         merged_data = merge_and_sort_data(stim_files, arm1_files)
         if merged_data is not None:
             analyze_and_plot_stim_survey_pairs(merged_data)
-            save_file(merged_data)
+            
 
 if __name__ == "__main__":
     main()
