@@ -150,10 +150,6 @@ def process_stim_data(filepath):
     for name, path in output_paths.items():
         print(f"- {name.capitalize()}: {path.name}")
 
-    messagebox.showinfo(
-        "Success",
-        f"Processing complete. The output files have been saved to:\n\n{output_dir}"
-    )
 
 
 def main():
